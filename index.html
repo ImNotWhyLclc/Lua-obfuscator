@@ -1,76 +1,87 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Lua Obfuscator</title>
+  <title>Lua VM Obfuscator</title>
   <style>
-    body {
-      font-family: monospace;
-      padding: 40px;
-      background-color: #1e1e1e;
-      color: #d4d4d4;
-    }
-    textarea {
-      width: 100%;
-      height: 200px;
-      background: #2d2d2d;
-      color: #d4d4d4;
-      border: none;
-      padding: 10px;
-      resize: vertical;
-    }
-    button {
-      margin-top: 10px;
-      padding: 10px 20px;
-      background: #007acc;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #005fa3;
-    }
-    h1 {
-      color: #61dafb;
-    }
+    body { background: #1e1e1e; color: #ccc; font-family: monospace; padding: 30px; }
+    textarea { width: 100%; height: 200px; background: #2b2b2b; color: #ccc; border: none; padding: 10px; margin-bottom: 10px; }
+    button { padding: 10px 20px; background: #007acc; border: none; color: white; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h1>Lua Obfuscator</h1>
-  <p>Paste your Lua code below:</p>
-  <textarea id="input" placeholder="Enter Lua code here..."></textarea><br>
-  <button onclick="obfuscateLua()">Obfuscate</button>
 
+  <h1>Lua Obfuscator (MoonSec-Style)</h1>
+  <textarea id="input" placeholder="Paste Lua script here..."></textarea>
+  <button onclick="obfuscate()">Obfuscate</button>
   <h3>Obfuscated Output:</h3>
   <textarea id="output" readonly></textarea>
 
   <script>
-    function obfuscateLua() {
-      const input = document.getElementById('input').value;
+    function encryptString(str) {
+      return str.split('').map(c => c.charCodeAt(0) + 3).join(',');
+    }
 
-      // Remove single-line comments
-      let code = input.replace(/--.*/g, '');
+    function obfuscate() {
+      const code = document.getElementById('input').value;
+      let lines = code.split('\n');
 
-      // Remove extra whitespace
-      code = code.replace(/\s+/g, ' ').trim();
+      let vmBody = '';
+      let varMap = {};
+      let varCount = 0;
 
-      // Rename local variables (simple pattern)
-      let varIndex = 0;
-      const varMap = {};
-      code = code.replace(/\blocal\s+(\w+)/g, function(match, varName) {
-        const newVar = 'v' + varIndex++;
-        varMap[varName] = newVar;
-        return 'local ' + newVar;
+      lines.forEach(line => {
+        // Remove comments
+        line = line.replace(/--.*/, '').trim();
+        if (line === '') return;
+
+        // Rename locals
+        line = line.replace(/\blocal\s+(\w+)/g, (_, varName) => {
+          const newName = 'v' + (varCount++);
+          varMap[varName] = newName;
+          return 'local ' + newName;
+        });
+
+        // Replace variable references
+        for (const [oldName, newName] of Object.entries(varMap)) {
+          const re = new RegExp(`\\b${oldName}\\b`, 'g');
+          line = line.replace(re, newName);
+        }
+
+        // Encrypt strings
+        line = line.replace(/"(.*?)"/g, (_, match) => `"__enc__:${encryptString(match)}"`);
+        vmBody += '  ' + line + '\n';
       });
 
-      // Replace all references to those vars
-      for (const [original, obf] of Object.entries(varMap)) {
-        const re = new RegExp(`\\b${original}\\b`, 'g');
-        code = code.replace(re, obf);
-      }
+      const output = `
+local decrypt = function(data)
+  local result = ""
+  for num in string.gmatch(data, "%d+") do
+    result = result .. string.char(tonumber(num) - 3)
+  end
+  return result
+end
 
-      document.getElementById('output').value = code;
+local print_real = print
+print = function(v)
+  if type(v) == "string" and v:sub(1,8) == "__enc__:" then
+    print_real(decrypt(v:sub(9)))
+  else
+    print_real(v)
+  end
+end
+
+local _vm = {
+  [1] = function()
+${vmBody}
+  end
+}
+
+return _vm[1]()
+`;
+
+      document.getElementById('output').value = output.trim();
     }
   </script>
+
 </body>
 </html>
