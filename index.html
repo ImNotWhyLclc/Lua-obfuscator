@@ -1,30 +1,152 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Lua VM Obfuscator</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lua Obfuscator (MoonSec Style)</title>
   <style>
-    body { background: #1e1e1e; color: #ccc; font-family: monospace; padding: 30px; }
-    textarea { width: 100%; height: 200px; background: #2b2b2b; color: #ccc; border: none; padding: 10px; margin-bottom: 10px; }
-    button { padding: 10px 20px; background: #007acc; border: none; color: white; cursor: pointer; }
+    /* Reset and base */
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #121212;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+      min-height: 100vh;
+    }
+    h1 {
+      color: #61dafb;
+      margin-bottom: 10px;
+      user-select: none;
+    }
+    label {
+      display: block;
+      margin: 15px 0 6px 0;
+      font-weight: 600;
+      user-select: none;
+    }
+    textarea {
+      width: 100%;
+      max-width: 800px;
+      min-height: 180px;
+      background: #222;
+      color: #ddd;
+      border: none;
+      border-radius: 6px;
+      padding: 15px;
+      font-family: monospace;
+      font-size: 14px;
+      resize: vertical;
+      transition: background-color 0.3s;
+    }
+    textarea:focus {
+      outline: 2px solid #61dafb;
+      background: #1a1a1a;
+    }
+    button, input[type="file"] {
+      cursor: pointer;
+      margin-top: 15px;
+      background: #007acc;
+      border: none;
+      color: white;
+      font-weight: 600;
+      padding: 12px 22px;
+      border-radius: 6px;
+      font-size: 15px;
+      transition: background-color 0.3s;
+      user-select: none;
+      display: inline-block;
+    }
+    button:hover, input[type="file"]:hover {
+      background: #005fa3;
+    }
+    .button-group {
+      max-width: 800px;
+      width: 100%;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+    .output-container {
+      max-width: 800px;
+      width: 100%;
+      margin-top: 25px;
+    }
+    footer {
+      margin-top: auto;
+      padding: 15px 0;
+      color: #666;
+      font-size: 13px;
+      user-select: none;
+    }
+    @media (max-width: 500px) {
+      textarea {
+        font-size: 13px;
+      }
+      button, input[type="file"] {
+        font-size: 14px;
+        padding: 10px 18px;
+      }
+    }
   </style>
 </head>
 <body>
 
-  <h1>Lua Obfuscator (MoonSec-Style)</h1>
-  <textarea id="input" placeholder="Paste Lua script here..."></textarea>
-  <button onclick="obfuscate()">Obfuscate</button>
-  <h3>Obfuscated Output:</h3>
-  <textarea id="output" readonly></textarea>
+  <h1>Lua Obfuscator (MoonSec Style)</h1>
+
+  <label for="fileInput">Upload Lua Script (.txt or .lua):</label>
+  <input type="file" id="fileInput" accept=".txt,.lua,text/plain" />
+
+  <label for="input">Or paste Lua code here:</label>
+  <textarea id="input" placeholder="Paste your Lua code here..."></textarea>
+
+  <div class="button-group">
+    <button id="obfuscateBtn">Obfuscate</button>
+    <button id="copyBtn" title="Copy obfuscated output to clipboard">Copy Output</button>
+  </div>
+
+  <div class="output-container">
+    <label for="output">Obfuscated Output:</label>
+    <textarea id="output" readonly placeholder="Obfuscated Lua code will appear here..."></textarea>
+  </div>
+
+  <footer>
+    &copy; 2025 Ren's Lua Obfuscator — Powered by ChatGPT
+  </footer>
 
   <script>
+    const fileInput = document.getElementById('fileInput');
+    const input = document.getElementById('input');
+    const output = document.getElementById('output');
+    const obfuscateBtn = document.getElementById('obfuscateBtn');
+    const copyBtn = document.getElementById('copyBtn');
+
+    // Load file content into textarea
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        input.value = event.target.result;
+      };
+      reader.readAsText(file);
+    });
+
+    // Encrypt string helper (+3 Caesar cipher)
     function encryptString(str) {
       return str.split('').map(c => c.charCodeAt(0) + 3).join(',');
     }
 
-    function obfuscate() {
-      const code = document.getElementById('input').value;
+    // Obfuscation logic
+    function obfuscateLua(code) {
       let lines = code.split('\n');
-
       let vmBody = '';
       let varMap = {};
       let varCount = 0;
@@ -36,24 +158,26 @@
 
         // Rename locals
         line = line.replace(/\blocal\s+(\w+)/g, (_, varName) => {
-          const newName = 'v' + (varCount++);
-          varMap[varName] = newName;
-          return 'local ' + newName;
+          if (!varMap[varName]) {
+            varMap[varName] = 'v' + (varCount++);
+          }
+          return 'local ' + varMap[varName];
         });
 
-        // Replace variable references
+        // Replace all variable occurrences
         for (const [oldName, newName] of Object.entries(varMap)) {
           const re = new RegExp(`\\b${oldName}\\b`, 'g');
           line = line.replace(re, newName);
         }
 
-        // Encrypt strings
+        // Encrypt string literals
         line = line.replace(/"(.*?)"/g, (_, match) => `"__enc__:${encryptString(match)}"`);
+
         vmBody += '  ' + line + '\n';
       });
 
-      const output = `
-local decrypt = function(data)
+      // Compose full obfuscated Lua script
+      const obfuscated = `local decrypt = function(data)
   local result = ""
   for num in string.gmatch(data, "%d+") do
     result = result .. string.char(tonumber(num) - 3)
@@ -72,16 +196,38 @@ end
 
 local _vm = {
   [1] = function()
-${vmBody}
-  end
+${vmBody}  end
 }
 
 return _vm[1]()
 `;
 
-      document.getElementById('output').value = output.trim();
+      return obfuscated.trim();
     }
-  </script>
 
+    // Obfuscate button click handler
+    obfuscateBtn.addEventListener('click', () => {
+      const code = input.value.trim();
+      if (!code) {
+        alert('Please paste or upload some Lua code first.');
+        return;
+      }
+      output.value = obfuscateLua(code);
+    });
+
+    // Copy output button handler
+    copyBtn.addEventListener('click', () => {
+      if (!output.value.trim()) {
+        alert('No obfuscated output to copy!');
+        return;
+      }
+      navigator.clipboard.writeText(output.value)
+        .then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => copyBtn.textContent = 'Copy Output', 1500);
+        })
+        .catch(() => alert('Failed to copy!'));
+    });
+  </script>
 </body>
 </html>
